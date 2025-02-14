@@ -1,7 +1,11 @@
 from django.contrib.auth.models import User
 from rest_framework import serializers
 
-class RegisterSerializers(serializers.Serializer):
+from app_users.models import ProfileModel
+from app_users.utils import generate_verification_code, send_verification_email
+
+
+class RegisterSerializer(serializers.Serializer):
     first_name = serializers.CharField()
     last_name = serializers.CharField()
     email = serializers.EmailField()
@@ -23,7 +27,7 @@ class RegisterSerializers(serializers.Serializer):
         return data
 
     def create(self, validated_data):
-        """Foydalanuvchini yaratish"""
+        """Foydalanuvchini yaratish va emailga tasdiqlash kodini yuborish"""
         user = User.objects.create_user(
             first_name=validated_data['first_name'],
             last_name=validated_data['last_name'],
@@ -32,4 +36,29 @@ class RegisterSerializers(serializers.Serializer):
             password=validated_data['password1'],
             is_active=False
         )
+
+        verification_code = generate_verification_code()
+        profile, created = ProfileModel.objects.get_or_create(user=user)
+        profile.verification_code = verification_code
+        profile.save()
+
+        send_verification_email(user.email, verification_code)
+
         return user
+
+
+class UserProfileSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ProfileModel
+        fields = ['avatar', 'bio']
+
+
+class UpdatePasswordSerializer(serializers.Serializer):
+    old_password = serializers.CharField(write_only=True)
+    new_password1 = serializers.CharField(write_only=True)
+    new_password2 = serializers.CharField(write_only=True)
+
+    def validate(self, data):
+        if data['new_password1'] != data['new_password2']:
+            raise serializers.ValidationError({"password": "Parollar mos kelmadi"})
+        return data
